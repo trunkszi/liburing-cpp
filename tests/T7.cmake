@@ -1,0 +1,3 @@
+liburing_add_test(proactor_modes_test unit/config/proactor_modes_test.cc)
+liburing_add_test(payload_codec_test unit/core/payload_codec_test.cc)
+liburing_add_compile_fail(payload_codec_signed_fail compile_fail/payload_codec_signed_fail.cc)

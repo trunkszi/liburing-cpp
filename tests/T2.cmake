@@ -1,0 +1,7 @@
+liburing_add_test(token_test unit/core/token_test.cc)
+liburing_add_test(op_header_test unit/core/op_header_test.cc)
+liburing_add_test(slab_test unit/core/slab_test.cc)
+liburing_add_test(core_layout_test consteval/core/layout_test.cc)
+liburing_add_compile_fail(slab_capacity_fail compile_fail/core/slab_capacity.cc)
+liburing_add_compile_fail(token_overflow_fail compile_fail/core/token_overflow.cc)
+liburing_add_codegen_probes(t2_codegen "${PROJECT_SOURCE_DIR}/benches/core/codegen_probe.cc")

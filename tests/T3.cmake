@@ -1,0 +1,12 @@
+liburing_add_test(ring_consteval_test consteval/ring/ring_consteval_test.cc)
+liburing_add_test(ring_test unit/ring/ring_test.cc)
+liburing_add_test(resources_test unit/resources/resources_test.cc)
+liburing_add_compile_fail(chain_multishot_compile_fail compile_fail/ring/chain_multishot_compile_fail.cc)
+
+add_test(NAME mixed_sqe_at_mask_inserts_pad COMMAND ring_test mixed_sqe_at_mask_inserts_pad)
+add_test(NAME pad_never_splits_link_chain COMMAND ring_test pad_never_splits_link_chain)
+add_test(NAME cq_head_released_before_callback COMMAND ring_test cq_head_released_before_callback)
+add_test(NAME buf_more_blocks_recycle COMMAND resources_test buf_more_blocks_recycle)
+add_test(NAME bundle_recycles_multiple_bids COMMAND resources_test bundle_recycles_multiple_bids)
+add_test(NAME resource_registry_isolates_bgids COMMAND resources_test resource_registry_isolates_bgids)
+liburing_add_test(resource_audit_test unit/resources/audit_test.cc)

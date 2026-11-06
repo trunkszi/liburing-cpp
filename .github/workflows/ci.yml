@@ -1,0 +1,536 @@
+name: liburing-cpp CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+
+jobs:
+  cli-and-lint:
+    name: CLI, format, and tidy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LIBURING_TOOLCHAINS: clang-glibc gcc-glibc
+      LIBURING_UARCH_COMPILER: clang-glibc
+      LIBURING_CLANG_TIDY_BIN: clang-tidy-23
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ca-certificates ccache curl git gnupg ninja-build pkg-config python3 xz-utils
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-23
+      - name: Install CMake 4.0+
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: latest
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install reflection toolchains and uarch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /root/.local/toolchain
+          sudo chmod a+rx /root /root/.local
+          sudo chown -R "$(id -u):$(id -g)" /root/.local/toolchain
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, tarfile, urllib.request
+          specs = {
+              "clang-glibc": ("clang-cross", "x86_64-unknown-linux-gnu", "bin/clang++"),
+              "gcc-glibc": ("gnu-cross", "x86_64-unknown-linux-gnu", "bin/x86_64-unknown-linux-gnu-g++"),
+              "clang-musl": ("clang-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-clang++"),
+              "gcc-musl": ("musl-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-g++"),
+          }
+          root = pathlib.Path("/root/.local/toolchain")
+          token = os.environ.get("GITHUB_TOKEN", "")
+          names = os.environ["LIBURING_TOOLCHAINS"].split()
+          def ensure_clang_glibc_cfg(dest: pathlib.Path) -> None:
+              bin_dir = dest / "bin"
+              sysroot = dest / "x86_64-unknown-linux-gnu/sysroot"
+              (bin_dir / "clang.cfg").write_text(
+                  f"--sysroot={sysroot}\n--gcc-toolchain={dest}\n"
+              )
+              (bin_dir / "clang++.cfg").write_text(
+                  f"--sysroot={sysroot}\n"
+                  f"--gcc-toolchain={dest}\n"
+                  "-stdlib=libc++\n"
+                  f"-Wl,-rpath,{sysroot}/usr/lib\n"
+                  f"-Wl,-rpath,{dest}/lib/x86_64-unknown-linux-gnu\n"
+              )
+          for name in names:
+              repo, target, compiler = specs[name]
+              dest = root / name
+              executable = dest / compiler
+              if executable.is_file() and os.access(executable, os.X_OK):
+                  if name == "clang-glibc":
+                      ensure_clang_glibc_cfg(dest)
+                  print(f"toolchain present: {executable}")
+                  continue
+              filename = f"{target}-ubuntu22.tar.xz"
+              api = f"https://api.github.com/repos/trunkszi/{repo}/releases/tags/v0.0.1"
+              headers = {"Accept": "application/vnd.github+json", "User-Agent": "liburing-cpp-ci"}
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              request = urllib.request.Request(api, headers=headers)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  release = json.load(response)
+              assets = [asset for asset in release.get("assets", []) if asset.get("name") == filename]
+              if len(assets) != 1:
+                  raise SystemExit(f"{filename}: expected one release asset")
+              asset = assets[0]
+              digest = asset.get("digest", "")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit(f"{filename}: missing sha256 digest")
+              url = asset["browser_download_url"]
+              if not url.startswith(f"https://github.com/trunkszi/{repo}/releases/download/"):
+                  raise SystemExit(f"{filename}: unexpected download URL")
+              archive = pathlib.Path(os.environ.get("RUNNER_TEMP", "/tmp")) / filename
+              download = urllib.request.Request(url, headers={"User-Agent": "liburing-cpp-ci"})
+              with urllib.request.urlopen(download, timeout=180) as response, archive.open("wb") as output:
+                  shutil.copyfileobj(response, output, length=1024 * 1024)
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual != digest.split(":", 1)[1]:
+                  raise SystemExit(f"{filename}: digest mismatch")
+              unpacked = archive.with_name(filename + ".unpacked")
+              if unpacked.exists():
+                  shutil.rmtree(unpacked)
+              unpacked.mkdir()
+              with tarfile.open(archive) as package:
+                  package.extractall(unpacked, filter="data")
+              entries = list(unpacked.iterdir())
+              if len(entries) != 1 or not entries[0].is_dir() or entries[0].name not in (name, target):
+                  raise SystemExit(f"{filename}: expected one SDK directory named {name} or {target}")
+              if dest.exists():
+                  shutil.rmtree(dest)
+              entries[0].rename(dest)
+              if not executable.is_file():
+                  raise SystemExit(f"missing compiler after extract: {executable}")
+              if name == "clang-glibc":
+                  ensure_clang_glibc_cfg(dest)
+              print(f"installed {executable}")
+          PY
+          compiler_of() {
+            case "$1" in
+              clang-glibc) printf '%s\n' /root/.local/toolchain/clang-glibc/bin/clang++ ;;
+              gcc-glibc) printf '%s\n' /root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++ ;;
+              clang-musl) printf '%s\n' /root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++ ;;
+              gcc-musl) printf '%s\n' /root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++ ;;
+              *) echo "unknown uarch compiler: $1" >&2; exit 1 ;;
+            esac
+          }
+          compiler="$(compiler_of "${LIBURING_UARCH_COMPILER}")"
+          rm -rf "${RUNNER_TEMP}/uarch"
+          git init -q "${RUNNER_TEMP}/uarch"
+          git -C "${RUNNER_TEMP}/uarch" remote add origin https://github.com/trunkszi/uarch.git
+          git -C "${RUNNER_TEMP}/uarch" fetch --depth 1 origin 2638d2befb165ead3d47e09f9a760814aded4287
+          git -C "${RUNNER_TEMP}/uarch" checkout --detach FETCH_HEAD
+          cmake -S "${RUNNER_TEMP}/uarch" -B "${RUNNER_TEMP}/uarch-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="${compiler}" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/.deps" \
+            -DUARCH_BUILD_TESTS=OFF \
+            -DUARCH_BUILD_BENCHES=OFF \
+            -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
+          cmake --build "${RUNNER_TEMP}/uarch-build" --target uarch_detect --parallel 2
+          cmake --install "${RUNNER_TEMP}/uarch-build"
+          echo "CMAKE_PREFIX_PATH=${GITHUB_WORKSPACE}/.deps" >> "${GITHUB_ENV}"
+      - name: Sync the CLI environment
+        run: uv sync --locked --directory scripts/cli
+      - name: CLI unit tests
+        run: python3 -m unittest discover -s scripts/cli/tests
+      - name: Check formatting
+        run: ./uring format --check
+      - name: Clang-tidy
+        run: |
+          clang-tidy-23 --version
+          clang-tidy-23 --verify-config
+          ./uring tidy --preset clang-glibc-release
+
+
+  release-and-verify:
+    name: release ${{ matrix.toolchain }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [clang-glibc, gcc-glibc, clang-musl, gcc-musl]
+    env:
+      LIBURING_TOOLCHAINS: clang-glibc ${{ matrix.toolchain }}
+      LIBURING_UARCH_COMPILER: ${{ matrix.toolchain }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache git ninja-build pkg-config python3 xz-utils
+      - name: Install CMake 4.0+
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: latest
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install reflection toolchains and uarch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /root/.local/toolchain
+          sudo chmod a+rx /root /root/.local
+          sudo chown -R "$(id -u):$(id -g)" /root/.local/toolchain
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, tarfile, urllib.request
+          specs = {
+              "clang-glibc": ("clang-cross", "x86_64-unknown-linux-gnu", "bin/clang++"),
+              "gcc-glibc": ("gnu-cross", "x86_64-unknown-linux-gnu", "bin/x86_64-unknown-linux-gnu-g++"),
+              "clang-musl": ("clang-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-clang++"),
+              "gcc-musl": ("musl-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-g++"),
+          }
+          root = pathlib.Path("/root/.local/toolchain")
+          token = os.environ.get("GITHUB_TOKEN", "")
+          names = os.environ["LIBURING_TOOLCHAINS"].split()
+          def ensure_clang_glibc_cfg(dest: pathlib.Path) -> None:
+              bin_dir = dest / "bin"
+              sysroot = dest / "x86_64-unknown-linux-gnu/sysroot"
+              (bin_dir / "clang.cfg").write_text(
+                  f"--sysroot={sysroot}\n--gcc-toolchain={dest}\n"
+              )
+              (bin_dir / "clang++.cfg").write_text(
+                  f"--sysroot={sysroot}\n"
+                  f"--gcc-toolchain={dest}\n"
+                  "-stdlib=libc++\n"
+                  f"-Wl,-rpath,{sysroot}/usr/lib\n"
+                  f"-Wl,-rpath,{dest}/lib/x86_64-unknown-linux-gnu\n"
+              )
+          for name in names:
+              repo, target, compiler = specs[name]
+              dest = root / name
+              executable = dest / compiler
+              if executable.is_file() and os.access(executable, os.X_OK):
+                  if name == "clang-glibc":
+                      ensure_clang_glibc_cfg(dest)
+                  print(f"toolchain present: {executable}")
+                  continue
+              filename = f"{target}-ubuntu22.tar.xz"
+              api = f"https://api.github.com/repos/trunkszi/{repo}/releases/tags/v0.0.1"
+              headers = {"Accept": "application/vnd.github+json", "User-Agent": "liburing-cpp-ci"}
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              request = urllib.request.Request(api, headers=headers)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  release = json.load(response)
+              assets = [asset for asset in release.get("assets", []) if asset.get("name") == filename]
+              if len(assets) != 1:
+                  raise SystemExit(f"{filename}: expected one release asset")
+              asset = assets[0]
+              digest = asset.get("digest", "")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit(f"{filename}: missing sha256 digest")
+              url = asset["browser_download_url"]
+              if not url.startswith(f"https://github.com/trunkszi/{repo}/releases/download/"):
+                  raise SystemExit(f"{filename}: unexpected download URL")
+              archive = pathlib.Path(os.environ.get("RUNNER_TEMP", "/tmp")) / filename
+              download = urllib.request.Request(url, headers={"User-Agent": "liburing-cpp-ci"})
+              with urllib.request.urlopen(download, timeout=180) as response, archive.open("wb") as output:
+                  shutil.copyfileobj(response, output, length=1024 * 1024)
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual != digest.split(":", 1)[1]:
+                  raise SystemExit(f"{filename}: digest mismatch")
+              unpacked = archive.with_name(filename + ".unpacked")
+              if unpacked.exists():
+                  shutil.rmtree(unpacked)
+              unpacked.mkdir()
+              with tarfile.open(archive) as package:
+                  package.extractall(unpacked, filter="data")
+              entries = list(unpacked.iterdir())
+              if len(entries) != 1 or not entries[0].is_dir() or entries[0].name not in (name, target):
+                  raise SystemExit(f"{filename}: expected one SDK directory named {name} or {target}")
+              if dest.exists():
+                  shutil.rmtree(dest)
+              entries[0].rename(dest)
+              if not executable.is_file():
+                  raise SystemExit(f"missing compiler after extract: {executable}")
+              if name == "clang-glibc":
+                  ensure_clang_glibc_cfg(dest)
+              print(f"installed {executable}")
+          PY
+          compiler_of() {
+            case "$1" in
+              clang-glibc) printf '%s\n' /root/.local/toolchain/clang-glibc/bin/clang++ ;;
+              gcc-glibc) printf '%s\n' /root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++ ;;
+              clang-musl) printf '%s\n' /root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++ ;;
+              gcc-musl) printf '%s\n' /root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++ ;;
+              *) echo "unknown uarch compiler: $1" >&2; exit 1 ;;
+            esac
+          }
+          if [[ "${{ matrix.toolchain }}" == *-musl ]]; then
+            sudo ln -sf "/root/.local/toolchain/${{ matrix.toolchain }}/x86_64-unknown-linux-musl/sysroot/usr/lib/libc.so" /lib/ld-musl-x86_64.so.1
+          fi
+          compiler="$(compiler_of "${LIBURING_UARCH_COMPILER}")"
+          rm -rf "${RUNNER_TEMP}/uarch"
+          git init -q "${RUNNER_TEMP}/uarch"
+          git -C "${RUNNER_TEMP}/uarch" remote add origin https://github.com/trunkszi/uarch.git
+          git -C "${RUNNER_TEMP}/uarch" fetch --depth 1 origin 2638d2befb165ead3d47e09f9a760814aded4287
+          git -C "${RUNNER_TEMP}/uarch" checkout --detach FETCH_HEAD
+          cmake -S "${RUNNER_TEMP}/uarch" -B "${RUNNER_TEMP}/uarch-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="${compiler}" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/.deps" \
+            -DUARCH_BUILD_TESTS=OFF \
+            -DUARCH_BUILD_BENCHES=OFF \
+            -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
+          cmake --build "${RUNNER_TEMP}/uarch-build" --target uarch_detect --parallel 2
+          cmake --install "${RUNNER_TEMP}/uarch-build"
+          echo "CMAKE_PREFIX_PATH=${GITHUB_WORKSPACE}/.deps" >> "${GITHUB_ENV}"
+      - name: Sync the CLI environment
+        run: uv sync --locked --directory scripts/cli
+      - name: Release tests and verify
+        run: |
+          if [[ -r /proc/sys/kernel/io_uring_disabled && "$(cat /proc/sys/kernel/io_uring_disabled)" != "0" ]]; then
+            sudo sysctl -w kernel.io_uring_disabled=0
+          fi
+          ulimit -l unlimited 2>/dev/null || true
+          ./uring test --preset "${{ matrix.toolchain }}-release"
+          ./uring verify all --preset "${{ matrix.toolchain }}-release"
+      - name: Verify installed CMake package consumer
+        run: |
+          set -euo pipefail
+          case "${LIBURING_UARCH_COMPILER}" in
+            clang-glibc) compiler=/root/.local/toolchain/clang-glibc/bin/clang++ ;;
+            gcc-glibc) compiler=/root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++ ;;
+            clang-musl) compiler=/root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++ ;;
+            gcc-musl) compiler=/root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++ ;;
+          esac
+          rm -rf /tmp/liburing-install /tmp/liburing-consumer /tmp/liburing-consumer-build
+          cmake --install "build/${{ matrix.toolchain }}-release" --prefix /tmp/liburing-install
+          mkdir -p /tmp/liburing-consumer
+          cat <<'EOF' > /tmp/liburing-consumer/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.30)
+          project(liburing_consumer LANGUAGES CXX)
+          set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+          find_package(liburing CONFIG REQUIRED)
+          add_executable(consumer main.cc)
+          target_link_libraries(consumer PRIVATE liburing::liburing)
+          EOF
+          cat <<'EOF' > /tmp/liburing-consumer/main.cc
+          #include <liburing/liburing.hpp>
+          int main() {
+            liburing::ring::ScriptedRing ring(8);
+            return ring.Params().sq_entries == 8U ? 0 : 1;
+          }
+          EOF
+          cmake -S /tmp/liburing-consumer -B /tmp/liburing-consumer-build -G Ninja \
+            -DCMAKE_CXX_COMPILER="${compiler}" \
+            -DCMAKE_PREFIX_PATH="/tmp/liburing-install;${CMAKE_PREFIX_PATH}"
+          cmake --build /tmp/liburing-consumer-build
+
+
+  sanitizers:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: clang-glibc-asan-ubsan
+            compiler: clang-glibc
+          - preset: gcc-glibc-asan-ubsan
+            compiler: gcc-glibc
+    env:
+      LIBURING_TOOLCHAINS: clang-glibc ${{ matrix.compiler }}
+      LIBURING_UARCH_COMPILER: ${{ matrix.compiler }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache git ninja-build pkg-config python3 xz-utils
+      - name: Install CMake 4.0+
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: latest
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install reflection toolchains and uarch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /root/.local/toolchain
+          sudo chmod a+rx /root /root/.local
+          sudo chown -R "$(id -u):$(id -g)" /root/.local/toolchain
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, tarfile, urllib.request
+          specs = {
+              "clang-glibc": ("clang-cross", "x86_64-unknown-linux-gnu", "bin/clang++"),
+              "gcc-glibc": ("gnu-cross", "x86_64-unknown-linux-gnu", "bin/x86_64-unknown-linux-gnu-g++"),
+              "clang-musl": ("clang-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-clang++"),
+              "gcc-musl": ("musl-cross", "x86_64-unknown-linux-musl", "bin/x86_64-unknown-linux-musl-g++"),
+          }
+          root = pathlib.Path("/root/.local/toolchain")
+          token = os.environ.get("GITHUB_TOKEN", "")
+          names = os.environ["LIBURING_TOOLCHAINS"].split()
+          def ensure_clang_glibc_cfg(dest: pathlib.Path) -> None:
+              bin_dir = dest / "bin"
+              sysroot = dest / "x86_64-unknown-linux-gnu/sysroot"
+              (bin_dir / "clang.cfg").write_text(
+                  f"--sysroot={sysroot}\n--gcc-toolchain={dest}\n"
+              )
+              (bin_dir / "clang++.cfg").write_text(
+                  f"--sysroot={sysroot}\n"
+                  f"--gcc-toolchain={dest}\n"
+                  "-stdlib=libc++\n"
+                  f"-Wl,-rpath,{sysroot}/usr/lib\n"
+                  f"-Wl,-rpath,{dest}/lib/x86_64-unknown-linux-gnu\n"
+              )
+          for name in names:
+              repo, target, compiler = specs[name]
+              dest = root / name
+              executable = dest / compiler
+              if executable.is_file() and os.access(executable, os.X_OK):
+                  if name == "clang-glibc":
+                      ensure_clang_glibc_cfg(dest)
+                  print(f"toolchain present: {executable}")
+                  continue
+              filename = f"{target}-ubuntu22.tar.xz"
+              api = f"https://api.github.com/repos/trunkszi/{repo}/releases/tags/v0.0.1"
+              headers = {"Accept": "application/vnd.github+json", "User-Agent": "liburing-cpp-ci"}
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              request = urllib.request.Request(api, headers=headers)
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  release = json.load(response)
+              assets = [asset for asset in release.get("assets", []) if asset.get("name") == filename]
+              if len(assets) != 1:
+                  raise SystemExit(f"{filename}: expected one release asset")
+              asset = assets[0]
+              digest = asset.get("digest", "")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit(f"{filename}: missing sha256 digest")
+              url = asset["browser_download_url"]
+              if not url.startswith(f"https://github.com/trunkszi/{repo}/releases/download/"):
+                  raise SystemExit(f"{filename}: unexpected download URL")
+              archive = pathlib.Path(os.environ.get("RUNNER_TEMP", "/tmp")) / filename
+              download = urllib.request.Request(url, headers={"User-Agent": "liburing-cpp-ci"})
+              with urllib.request.urlopen(download, timeout=180) as response, archive.open("wb") as output:
+                  shutil.copyfileobj(response, output, length=1024 * 1024)
+              actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if actual != digest.split(":", 1)[1]:
+                  raise SystemExit(f"{filename}: digest mismatch")
+              unpacked = archive.with_name(filename + ".unpacked")
+              if unpacked.exists():
+                  shutil.rmtree(unpacked)
+              unpacked.mkdir()
+              with tarfile.open(archive) as package:
+                  package.extractall(unpacked, filter="data")
+              entries = list(unpacked.iterdir())
+              if len(entries) != 1 or not entries[0].is_dir() or entries[0].name not in (name, target):
+                  raise SystemExit(f"{filename}: expected one SDK directory named {name} or {target}")
+              if dest.exists():
+                  shutil.rmtree(dest)
+              entries[0].rename(dest)
+              if not executable.is_file():
+                  raise SystemExit(f"missing compiler after extract: {executable}")
+              if name == "clang-glibc":
+                  ensure_clang_glibc_cfg(dest)
+              print(f"installed {executable}")
+          PY
+          compiler_of() {
+            case "$1" in
+              clang-glibc) printf '%s\n' /root/.local/toolchain/clang-glibc/bin/clang++ ;;
+              gcc-glibc) printf '%s\n' /root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++ ;;
+              clang-musl) printf '%s\n' /root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++ ;;
+              gcc-musl) printf '%s\n' /root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++ ;;
+              *) echo "unknown uarch compiler: $1" >&2; exit 1 ;;
+            esac
+          }
+          compiler="$(compiler_of "${LIBURING_UARCH_COMPILER}")"
+          rm -rf "${RUNNER_TEMP}/uarch"
+          git init -q "${RUNNER_TEMP}/uarch"
+          git -C "${RUNNER_TEMP}/uarch" remote add origin https://github.com/trunkszi/uarch.git
+          git -C "${RUNNER_TEMP}/uarch" fetch --depth 1 origin 2638d2befb165ead3d47e09f9a760814aded4287
+          git -C "${RUNNER_TEMP}/uarch" checkout --detach FETCH_HEAD
+          cmake -S "${RUNNER_TEMP}/uarch" -B "${RUNNER_TEMP}/uarch-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="${compiler}" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/.deps" \
+            -DUARCH_BUILD_TESTS=OFF \
+            -DUARCH_BUILD_BENCHES=OFF \
+            -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
+          cmake --build "${RUNNER_TEMP}/uarch-build" --target uarch_detect --parallel 2
+          cmake --install "${RUNNER_TEMP}/uarch-build"
+          echo "CMAKE_PREFIX_PATH=${GITHUB_WORKSPACE}/.deps" >> "${GITHUB_ENV}"
+      - name: Sync the CLI environment
+        run: uv sync --locked --directory scripts/cli
+      - name: Sanitizer tests
+        run: |
+          if [[ -r /proc/sys/kernel/io_uring_disabled && "$(cat /proc/sys/kernel/io_uring_disabled)" != "0" ]]; then
+            sudo sysctl -w kernel.io_uring_disabled=0
+          fi
+          ulimit -l unlimited 2>/dev/null || true
+          ./uring test --preset "${{ matrix.preset }}"
+      - name: Verify installed CMake package consumer
+        run: |
+          set -euo pipefail
+          case "${LIBURING_UARCH_COMPILER}" in
+            clang-glibc) compiler=/root/.local/toolchain/clang-glibc/bin/clang++ ;;
+            gcc-glibc) compiler=/root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++ ;;
+            clang-musl) compiler=/root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++ ;;
+            gcc-musl) compiler=/root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++ ;;
+          esac
+          rm -rf /tmp/liburing-install /tmp/liburing-consumer /tmp/liburing-consumer-build
+          cmake --install "build/${{ matrix.preset }}" --prefix /tmp/liburing-install
+          mkdir -p /tmp/liburing-consumer
+          cat <<'EOF' > /tmp/liburing-consumer/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.30)
+          project(liburing_consumer LANGUAGES CXX)
+          set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+          find_package(liburing CONFIG REQUIRED)
+          add_executable(consumer main.cc)
+          target_link_libraries(consumer PRIVATE liburing::liburing)
+          EOF
+          cat <<'EOF' > /tmp/liburing-consumer/main.cc
+          #include <liburing/liburing.hpp>
+          int main() {
+            liburing::ring::ScriptedRing ring(8);
+            return ring.Params().sq_entries == 8U ? 0 : 1;
+          }
+          EOF
+          cmake -S /tmp/liburing-consumer -B /tmp/liburing-consumer-build -G Ninja \
+            -DCMAKE_CXX_COMPILER="${compiler}" \
+            -DCMAKE_PREFIX_PATH="/tmp/liburing-install;${CMAKE_PREFIX_PATH}"
+          cmake --build /tmp/liburing-consumer-build
+

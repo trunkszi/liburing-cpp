@@ -1,0 +1,2 @@
+add_executable(core_bench core/operation_bench.cc)
+liburing_configure_internal(core_bench)

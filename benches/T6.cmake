@@ -1,0 +1,2 @@
+add_executable(proactor_dispatch_bench proactor/dispatch_bench.cc)
+liburing_configure_internal(proactor_dispatch_bench)

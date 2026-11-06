@@ -1,0 +1,23 @@
+{
+  "name": "liburing-cpp",
+  "version": "0.1.0",
+  "description": "C++26 runtime-free io_uring and futex2 proactor framework",
+  "dependencies": [
+    "uarch"
+  ],
+  "features": {
+    "tools": {
+      "description": "Native verification CLI dependencies",
+      "dependencies": [
+        "clapp",
+        "glaze"
+      ]
+    },
+    "benches": {
+      "description": "Microbenchmark dependencies",
+      "dependencies": [
+        "benchmark"
+      ]
+    }
+  }
+}

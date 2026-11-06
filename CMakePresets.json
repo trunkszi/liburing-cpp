@@ -1,0 +1,362 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 30,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "clang-glibc-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-glibc-release",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-glibc/bin/clang++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "clang-glibc-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-glibc-debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-glibc/bin/clang++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "clang-glibc-asan-ubsan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-glibc-asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-glibc/bin/clang++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": true
+      }
+    },
+    {
+      "name": "gcc-glibc-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-glibc-release",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "gcc-glibc-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-glibc-debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "gcc-glibc-asan-ubsan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-glibc-asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-glibc/bin/x86_64-unknown-linux-gnu-g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": true
+      }
+    },
+    {
+      "name": "clang-musl-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-musl-release",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "clang-musl-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-musl-debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "gcc-musl-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-musl-release",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "gcc-musl-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-musl-debug",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": false
+      }
+    },
+    {
+      "name": "clang-musl-asan-ubsan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/clang-musl-asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/clang-musl/bin/x86_64-unknown-linux-musl-clang++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": true
+      }
+    },
+    {
+      "name": "gcc-musl-asan-ubsan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc-musl-asan-ubsan",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "/root/.local/toolchain/gcc-musl/bin/x86_64-unknown-linux-musl-g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_SCAN_FOR_MODULES": false,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "CMAKE_TOOLCHAIN_FILE": "",
+        "LIBURING_BUILD_TESTS": true,
+        "LIBURING_ENABLE_SANITIZERS": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-glibc-release",
+      "configurePreset": "clang-glibc-release",
+      "jobs": 2
+    },
+    {
+      "name": "clang-glibc-debug",
+      "configurePreset": "clang-glibc-debug",
+      "jobs": 2
+    },
+    {
+      "name": "clang-glibc-asan-ubsan",
+      "configurePreset": "clang-glibc-asan-ubsan",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-glibc-release",
+      "configurePreset": "gcc-glibc-release",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-glibc-debug",
+      "configurePreset": "gcc-glibc-debug",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-glibc-asan-ubsan",
+      "configurePreset": "gcc-glibc-asan-ubsan",
+      "jobs": 2
+    },
+    {
+      "name": "clang-musl-release",
+      "configurePreset": "clang-musl-release",
+      "jobs": 2
+    },
+    {
+      "name": "clang-musl-debug",
+      "configurePreset": "clang-musl-debug",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-musl-release",
+      "configurePreset": "gcc-musl-release",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-musl-debug",
+      "configurePreset": "gcc-musl-debug",
+      "jobs": 2
+    },
+    {
+      "name": "clang-musl-asan-ubsan",
+      "configurePreset": "clang-musl-asan-ubsan",
+      "jobs": 2
+    },
+    {
+      "name": "gcc-musl-asan-ubsan",
+      "configurePreset": "gcc-musl-asan-ubsan",
+      "jobs": 2
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "clang-glibc-release",
+      "configurePreset": "clang-glibc-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "clang-glibc-debug",
+      "configurePreset": "clang-glibc-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "clang-glibc-asan-ubsan",
+      "configurePreset": "clang-glibc-asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-glibc-release",
+      "configurePreset": "gcc-glibc-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-glibc-debug",
+      "configurePreset": "gcc-glibc-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-glibc-asan-ubsan",
+      "configurePreset": "gcc-glibc-asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "clang-musl-release",
+      "configurePreset": "clang-musl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "clang-musl-debug",
+      "configurePreset": "clang-musl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-musl-release",
+      "configurePreset": "gcc-musl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-musl-debug",
+      "configurePreset": "gcc-musl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "clang-musl-asan-ubsan",
+      "configurePreset": "clang-musl-asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc-musl-asan-ubsan",
+      "configurePreset": "gcc-musl-asan-ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+liburing_add_test(fixed_buffer_pool_test unit/resources/fixed_buffer_pool_test.cc)
+liburing_add_test(direct_file_test unit/io/direct_file_test.cc)
